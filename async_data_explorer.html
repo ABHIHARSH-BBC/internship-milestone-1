@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Async Data Explorer - GitHub API & Async Patterns</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            space: {
+              900: '#0b0f19',
+              850: '#111726',
+              800: '#151d30',
+              700: '#1e293b',
+              600: '#334155'
+            },
+            accent: {
+              cyan: '#38bdf8',
+              emerald: '#10b981',
+              violet: '#8b5cf6',
+              amber: '#f59e0b',
+              rose: '#f43f5e'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0b0f19;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334155;
+    }
+
+    /* Pulse animation for debounce indicator */
+    @keyframes pulse-bar {
+      0% { width: 0%; opacity: 1; }
+      100% { width: 100%; opacity: 0.85; }
+    }
+    .animate-debounce-bar {
+      animation: pulse-bar 600ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+
+    /* Skeleton Shimmer Effect */
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .skeleton-box {
+      background: linear-gradient(90deg, #151d30 25%, #1e293b 50%, #151d30 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.8s infinite;
+    }
+
+    /* Subtle Glassmorphism */
+    .glass-card {
+      background: rgba(17, 23, 38, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+    }
+  </style>
+</head>
+<body class="bg-space-900 text-slate-100 min-h-screen font-sans flex flex-col selection:bg-cyan-500 selection:text-white">
+
+  <!-- Top Sticky Navigation & Header -->
+  <header class="sticky top-0 z-40 border-b border-slate-800/80 bg-space-900/90 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-violet-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+          <i class="fa-solid fa-bolt-lightning text-white text-base"></i>
+        </div>
+        <div>
+          <span class="text-sm font-semibold tracking-wide text-white block">Async Data Explorer</span>
+          <span class="text-[11px] font-mono text-cyan-400">GitHub API • Concurrency & State</span>
+        </div>
+      </div>
+
+      <!-- Action items -->
+      <div class="flex items-center space-x-3">
+        <button id="theoryModalBtn" class="flex items-center space-x-2 text-xs font-medium px-3.5 py-2 rounded-lg bg-space-800 hover:bg-space-700 text-slate-200 border border-slate-700/60 transition">
+          <i class="fa-solid fa-graduation-cap text-amber-400"></i>
+          <span class="hidden sm:inline">Async Concepts</span>
+        </button>
+        <a href="https://github.com" target="_blank" rel="noopener noreferrer" class="text-slate-400 hover:text-white text-lg p-1.5 transition">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Application Body -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+
+    <!-- Search & Control Header Section -->
+    <section class="glass-card rounded-2xl p-5 sm:p-7 shadow-xl shadow-black/40">
+      <div class="max-w-3xl mx-auto space-y-4">
+        
+        <div class="text-center sm:text-left sm:flex sm:items-center sm:justify-between mb-2">
+          <div>
+            <h1 class="text-xl sm:text-2xl font-bold text-white tracking-tight">GitHub Profile & Repository Fetcher</h1>
+            <p class="text-xs sm:text-sm text-slate-400 mt-1">Live demo of async/await, AbortController, debounced requests & API telemetry.</p>
+          </div>
+          <div class="mt-2 sm:mt-0 flex items-center justify-center space-x-1.5 text-xs text-slate-400 font-mono bg-space-850 px-3 py-1.5 rounded-lg border border-slate-800">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>REST API v3</span>
+          </div>
+        </div>
+
+        <!-- Input Field Container with Visual Debounce Bar -->
+        <div class="relative">
+          <form id="searchForm" class="flex flex-col sm:flex-row gap-2.5" onsubmit="return false;">
+            <div class="relative flex-1">
+              <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                <i class="fa-solid fa-magnifying-glass text-sm"></i>
+              </span>
+              <input 
+                type="text" 
+                id="usernameInput" 
+                placeholder="Type a GitHub username (e.g. torvalds, gaearon)..." 
+                autocomplete="off"
+                spellcheck="false"
+                class="w-full pl-10 pr-10 py-3 bg-space-850 border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 font-mono transition"
+              >
+              <!-- Clear Input Button -->
+              <button 
+                type="button" 
+                id="clearInputBtn" 
+                class="hidden absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-500 hover:text-slate-300 transition"
+              >
+                <i class="fa-solid fa-circle-xmark text-sm"></i>
+              </button>
+            </div>
+            
+            <div class="flex gap-2">
+              <button 
+                type="submit" 
+                id="searchBtn" 
+                class="flex-1 sm:flex-initial flex items-center justify-center space-x-2 px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 active:scale-[0.98] text-white text-sm font-semibold shadow-lg shadow-cyan-600/20 transition cursor-pointer"
+              >
+                <i class="fa-solid fa-arrow-right text-xs"></i>
+                <span>Fetch Profile</span>
+              </button>
+
+              <button 
+                type="button" 
+                id="cancelReqBtn" 
+                title="Trigger AbortController.abort()" 
+                disabled 
+                class="px-4 py-3 rounded-xl bg-space-800 border border-rose-500/40 text-rose-400 hover:bg-rose-500/10 active:scale-[0.98] text-xs font-semibold disabled:opacity-30 disabled:pointer-events-none transition flex items-center space-x-1.5"
+              >
+                <i class="fa-solid fa-ban"></i>
+                <span class="hidden md:inline">Abort Req</span>
+              </button>
+            </div>
+          </form>
+
+          <!-- Debounce countdown visual bar -->
+          <div class="h-1 w-full bg-space-850 rounded-full mt-2 overflow-hidden">
+            <div id="debounceProgress" class="h-full bg-cyan-400 w-0 transition-none"></div>
+          </div>
+        </div>
+
+        <!-- Quick Explore Suggestions -->
+        <div class="flex items-center flex-wrap gap-2 pt-1 text-xs">
+          <span class="text-slate-400 font-medium">Try quick presets:</span>
+          <button data-username="torvalds" class="quick-preset px-2.5 py-1 rounded-md bg-space-850 hover:bg-space-700 border border-slate-700/60 text-slate-300 font-mono transition">@torvalds</button>
+          <button data-username="gaearon" class="quick-preset px-2.5 py-1 rounded-md bg-space-850 hover:bg-space-700 border border-slate-700/60 text-slate-300 font-mono transition">@gaearon</button>
+          <button data-username="sindresorhus" class="quick-preset px-2.5 py-1 rounded-md bg-space-850 hover:bg-space-700 border border-slate-700/60 text-slate-300 font-mono transition">@sindresorhus</button>
+          <button data-username="yyx990803" class="quick-preset px-2.5 py-1 rounded-md bg-space-850 hover:bg-space-700 border border-slate-700/60 text-slate-300 font-mono transition">@yyx990803</button>
+          <button data-username="thisisnotarealuserxyz123" class="quick-preset px-2.5 py-1 rounded-md bg-space-850 hover:bg-rose-900/30 border border-rose-800/40 text-rose-300 font-mono transition" title="Test 404 error state">@simulate-404</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Telemetry & Diagnostic Metrics Strip -->
+    <section class="glass-card rounded-xl p-3.5 border border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs font-mono">
+      <div class="flex items-center space-x-2">
+        <span class="text-slate-500 uppercase tracking-wider text-[10px]">Diagnostics:</span>
+        <span id="metricStatus" class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
+          <span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5"></span>
+          IDLE
+        </span>
+      </div>
+
+      <div class="flex items-center space-x-6 flex-wrap gap-y-2">
+        <div class="flex items-center space-x-2">
+          <span class="text-slate-500">HTTP Status:</span>
+          <span id="metricHttp" class="text-slate-300 font-semibold">—</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <span class="text-slate-500">Latency:</span>
+          <span id="metricLatency" class="text-cyan-400 font-semibold">—</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <span class="text-slate-500">Signal:</span>
+          <span id="metricAbort" class="text-slate-300 font-semibold">Active</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <span class="text-slate-500">Active Controller:</span>
+          <span id="metricController" class="text-slate-400">#none</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Content Display Area: Handles all states -->
+    <section id="displayContainer" class="min-h-[420px]">
+      
+      <!-- STATE 1: IDLE / INITIAL STATE -->
+      <div id="stateIdle" class="glass-card rounded-2xl p-12 text-center flex flex-col items-center justify-center border-dashed border-2 border-slate-800 min-h-[420px]">
+        <div class="w-16 h-16 rounded-2xl bg-space-850 border border-slate-700/80 flex items-center justify-center text-cyan-400 text-2xl mb-4 shadow-inner">
+          <i class="fa-solid fa-terminal"></i>
+        </div>
+        <h3 class="text-lg font-semibold text-white">Awaiting User Query</h3>
+        <p class="text-slate-400 text-sm max-w-md mt-1 mb-6">
+          Start typing a GitHub account username to trigger debounced async fetching, or click one of the quick presets above.
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-left max-w-2xl w-full text-xs text-slate-300">
+          <div class="p-3.5 rounded-xl bg-space-850/60 border border-slate-800">
+            <div class="font-semibold text-cyan-400 mb-1 flex items-center space-x-1.5">
+              <i class="fa-solid fa-clock-rotate-left"></i>
+              <span>Debounced Input</span>
+            </div>
+            <p class="text-slate-400">Waits 600ms after you stop typing before firing the API request.</p>
+          </div>
+          <div class="p-3.5 rounded-xl bg-space-850/60 border border-slate-800">
+            <div class="font-semibold text-emerald-400 mb-1 flex items-center space-x-1.5">
+              <i class="fa-solid fa-shield-halved"></i>
+              <span>Abort Controller</span>
+            </div>
+            <p class="text-slate-400">Cancels previous pending requests to prevent race conditions.</p>
+          </div>
+          <div class="p-3.5 rounded-xl bg-space-850/60 border border-slate-800">
+            <div class="font-semibold text-amber-400 mb-1 flex items-center space-x-1.5">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+              <span>Error Boundaries</span>
+            </div>
+            <p class="text-slate-400">Gracefully handles 404s, API rate caps, and network disconnections.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- STATE 2: LOADING SKELETON STATE -->
+      <div id="stateLoading" class="hidden space-y-6">
+        <!-- Profile Skeleton -->
+        <div class="glass-card rounded-2xl p-6 sm:p-8">
+          <div class="flex flex-col sm:flex-row items-center sm:items-start gap-6">
+            <div class="w-24 h-24 rounded-2xl skeleton-box flex-shrink-0"></div>
+            <div class="flex-1 w-full space-y-3 text-center sm:text-left">
+              <div class="h-6 w-48 skeleton-box rounded mx-auto sm:mx-0"></div>
+              <div class="h-4 w-32 skeleton-box rounded mx-auto sm:mx-0"></div>
+              <div class="h-4 w-full max-w-md skeleton-box rounded mx-auto sm:mx-0"></div>
+              <div class="flex flex-wrap gap-4 pt-2 justify-center sm:justify-start">
+                <div class="h-8 w-24 skeleton-box rounded-lg"></div>
+                <div class="h-8 w-24 skeleton-box rounded-lg"></div>
+                <div class="h-8 w-24 skeleton-box rounded-lg"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Repositories Grid Skeleton -->
+        <div class="space-y-3">
+          <div class="h-5 w-40 skeleton-box rounded"></div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="glass-card rounded-xl p-5 space-y-3">
+              <div class="h-5 w-3/4 skeleton-box rounded"></div>
+              <div class="h-3 w-full skeleton-box rounded"></div>
+              <div class="h-3 w-2/3 skeleton-box rounded"></div>
+              <div class="flex gap-3 pt-2">
+                <div class="h-4 w-16 skeleton-box rounded"></div>
+                <div class="h-4 w-12 skeleton-box rounded"></div>
+              </div>
+            </div>
+            <div class="glass-card rounded-xl p-5 space-y-3">
+              <div class="h-5 w-3/4 skeleton-box rounded"></div>
+              <div class="h-3 w-full skeleton-box rounded"></div>
+              <div class="h-3 w-2/3 skeleton-box rounded"></div>
+              <div class="flex gap-3 pt-2">
+                <div class="h-4 w-16 skeleton-box rounded"></div>
+                <div class="h-4 w-12 skeleton-box rounded"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STATE 3: SUCCESS STATE -->
+      <div id="stateSuccess" class="hidden space-y-6">
+        <!-- User Profile Card -->
+        <div id="userProfileCard" class="glass-card rounded-2xl p-6 sm:p-8 relative overflow-hidden">
+          <div class="absolute -right-12 -top-12 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
+          
+          <div class="flex flex-col sm:flex-row items-center sm:items-start gap-6 relative z-10">
+            <img 
+              id="userAvatar" 
+              src="" 
+              alt="Avatar" 
+              class="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl border-2 border-slate-700/80 shadow-xl object-cover"
+              onerror="this.src='https://placehold.co/120x120/1e293b/ffffff?text=User'"
+            >
+            <div class="flex-1 text-center sm:text-left space-y-2">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h2 id="userName" class="text-xl sm:text-2xl font-bold text-white tracking-tight">User Fullname</h2>
+                  <a id="userLoginLink" href="#" target="_blank" rel="noopener noreferrer" class="text-sm font-mono text-cyan-400 hover:underline">
+                    @username
+                  </a>
+                </div>
+                <a 
+                  id="userGithubBtn" 
+                  href="#" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  class="inline-flex items-center justify-center space-x-2 text-xs font-semibold px-4 py-2 rounded-xl bg-space-800 hover:bg-space-700 border border-slate-700 text-slate-200 transition"
+                >
+                  <i class="fa-brands fa-github text-sm"></i>
+                  <span>View GitHub Profile</span>
+                </a>
+              </div>
+
+              <p id="userBio" class="text-slate-300 text-sm max-w-2xl">
+                Bio description will appear here.
+              </p>
+
+              <!-- Meta badges -->
+              <div class="flex flex-wrap items-center justify-center sm:justify-start gap-4 pt-2 text-xs text-slate-400">
+                <span id="userLocationSpan" class="flex items-center space-x-1.5">
+                  <i class="fa-solid fa-location-dot text-rose-400"></i>
+                  <span id="userLocation">Location</span>
+                </span>
+                <span id="userCompanySpan" class="flex items-center space-x-1.5">
+                  <i class="fa-solid fa-building text-violet-400"></i>
+                  <span id="userCompany">Company</span>
+                </span>
+                <span id="userBlogSpan" class="flex items-center space-x-1.5">
+                  <i class="fa-solid fa-link text-emerald-400"></i>
+                  <a id="userBlog" href="#" target="_blank" rel="noopener noreferrer" class="hover:underline text-cyan-400 truncate max-w-[180px]">Website</a>
+                </span>
+                <span class="flex items-center space-x-1.5">
+                  <i class="fa-regular fa-calendar text-slate-400"></i>
+                  <span id="userJoined">Joined 2020</span>
+                </span>
+              </div>
+
+              <!-- Stats counters -->
+              <div class="grid grid-cols-3 gap-3 pt-3 max-w-sm mx-auto sm:mx-0">
+                <div class="bg-space-850/80 p-2.5 rounded-xl border border-slate-800 text-center">
+                  <div class="text-[10px] text-slate-400 uppercase tracking-wider">Repos</div>
+                  <div id="statRepos" class="text-lg font-bold text-white font-mono">0</div>
+                </div>
+                <div class="bg-space-850/80 p-2.5 rounded-xl border border-slate-800 text-center">
+                  <div class="text-[10px] text-slate-400 uppercase tracking-wider">Followers</div>
+                  <div id="statFollowers" class="text-lg font-bold text-white font-mono">0</div>
+                </div>
+                <div class="bg-space-850/80 p-2.5 rounded-xl border border-slate-800 text-center">
+                  <div class="text-[10px] text-slate-400 uppercase tracking-wider">Following</div>
+                  <div id="statFollowing" class="text-lg font-bold text-white font-mono">0</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- Repository List Header & Sort Controls -->
+        <div class="space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <h3 class="text-lg font-bold text-white flex items-center space-x-2">
+              <i class="fa-solid fa-book-bookmark text-cyan-400 text-sm"></i>
+              <span>Public Repositories</span>
+              <span id="repoCountBadge" class="text-xs px-2 py-0.5 rounded-full bg-space-800 text-slate-300 border border-slate-700">0</span>
+            </h3>
+
+            <!-- Repos Sort Selector -->
+            <div class="flex items-center space-x-2 text-xs">
+              <span class="text-slate-400">Sort by:</span>
+              <select id="repoSortSelect" class="bg-space-850 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500">
+                <option value="stars">Most Stars</option>
+                <option value="updated">Recently Updated</option>
+                <option value="forks">Most Forks</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Repos Grid Container -->
+          <div id="reposGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Dynamic Repo cards injected here -->
+          </div>
+        </div>
+      </div>
+
+      <!-- STATE 4: EMPTY STATE -->
+      <div id="stateEmpty" class="hidden glass-card rounded-2xl p-12 text-center flex flex-col items-center justify-center min-h-[420px]">
+        <div class="w-16 h-16 rounded-2xl bg-space-850 border border-slate-800 flex items-center justify-center text-slate-400 text-2xl mb-4">
+          <i class="fa-solid fa-box-open"></i>
+        </div>
+        <h3 class="text-lg font-semibold text-white">No Public Repositories Found</h3>
+        <p class="text-slate-400 text-sm max-w-sm mt-1">
+          This user has an active account, but has not published any public repositories yet.
+        </p>
+      </div>
+
+      <!-- STATE 5: ERROR STATE -->
+      <div id="stateError" class="hidden glass-card rounded-2xl p-10 text-center flex flex-col items-center justify-center min-h-[420px] border border-rose-900/30">
+        <div id="errorIconWrapper" class="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 text-2xl mb-4">
+          <i id="errorIcon" class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <h3 id="errorTitle" class="text-lg font-semibold text-white">Request Failed</h3>
+        <p id="errorMessage" class="text-slate-400 text-sm max-w-md mt-1 mb-6">
+          Unable to locate user or connection dropped.
+        </p>
+        <div class="flex items-center space-x-3">
+          <button 
+            id="retryBtn" 
+            class="px-5 py-2.5 rounded-xl bg-space-800 hover:bg-space-700 border border-slate-700 text-slate-200 text-xs font-semibold transition flex items-center space-x-2"
+          >
+            <i class="fa-solid fa-rotate-right text-xs"></i>
+            <span>Retry Request</span>
+          </button>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- Interactive Theory & Architecture Modal (Async Concepts Explainer) -->
+  <div id="theoryModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="glass-card max-w-2xl w-full rounded-2xl border border-slate-700 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <!-- Modal Header -->
+      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-space-850">
+        <div class="flex items-center space-x-2.5">
+          <i class="fa-solid fa-microchip text-cyan-400"></i>
+          <h3 class="font-bold text-white text-base">Asynchronous Architecture Patterns</h3>
+        </div>
+        <button id="closeTheoryBtn" class="text-slate-400 hover:text-white p-1 rounded-lg">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-6 overflow-y-auto space-y-5 text-sm text-slate-300 font-sans">
+        
+        <div class="space-y-1.5">
+          <div class="font-semibold text-cyan-400 flex items-center space-x-2">
+            <span class="w-5 h-5 rounded-md bg-cyan-950 text-cyan-400 flex items-center justify-center text-xs font-mono">1</span>
+            <span>Input Debouncing</span>
+          </div>
+          <p class="text-xs text-slate-400 leading-relaxed pl-7">
+            As keystrokes happen, a timer is continuously reset. The API call fires only after a pause of <strong>600ms</strong>. This prevents excessive network floods, saves rate limits, and stops spamming the backend API.
+          </p>
+        </div>
+
+        <div class="space-y-1.5">
+          <div class="font-semibold text-emerald-400 flex items-center space-x-2">
+            <span class="w-5 h-5 rounded-md bg-emerald-950 text-emerald-400 flex items-center justify-center text-xs font-mono">2</span>
+            <span>AbortController & Request Cancellation</span>
+          </div>
+          <p class="text-xs text-slate-400 leading-relaxed pl-7">
+            When a user submits a new search while a previous request is still in-flight, <code class="bg-space-850 px-1.5 py-0.5 rounded text-slate-200">abortController.abort()</code> cancels the open network stream immediately. This guarantees that stale responses cannot overwrite newer results (race condition prevention).
+          </p>
+        </div>
+
+        <div class="space-y-1.5">
+          <div class="font-semibold text-amber-400 flex items-center space-x-2">
+            <span class="w-5 h-5 rounded-md bg-amber-950 text-amber-400 flex items-center justify-center text-xs font-mono">3</span>
+            <span>Parallel Async Processing via Promise.all</span>
+          </div>
+          <p class="text-xs text-slate-400 leading-relaxed pl-7">
+            Instead of sequentially fetching the user profile and then waiting to start fetching repositories, both are requested concurrently using <code class="bg-space-850 px-1.5 py-0.5 rounded text-slate-200">Promise.all()</code>. This reduces overall waiting latency by 40–50%.
+          </p>
+        </div>
+
+        <div class="space-y-1.5">
+          <div class="font-semibold text-violet-400 flex items-center space-x-2">
+            <span class="w-5 h-5 rounded-md bg-violet-950 text-violet-400 flex items-center justify-center text-xs font-mono">4</span>
+            <span>Explicit State Machine Pattern</span>
+          </div>
+          <p class="text-xs text-slate-400 leading-relaxed pl-7">
+            The UI deterministically switches between strict mutually exclusive states: <strong class="text-slate-200">Idle &rarr; Loading &rarr; Success | Empty | Error</strong>. No visual ghosting or orphaned spinners can occur.
+          </p>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-6 py-3.5 border-t border-slate-800 bg-space-850 flex justify-end">
+        <button id="dismissTheoryBtn" class="px-4 py-2 rounded-xl bg-space-700 hover:bg-space-600 text-white text-xs font-semibold transition">
+          Got it
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+  <!-- JavaScript Implementation -->
+  <script>
+    /**
+     * Async Data Explorer
+     * Single-file implementation demonstrating core asynchronous JavaScript patterns:
+     * - Debouncing
+     * - AbortController
+     * - async / await & try / catch
+     * - Concurrent fetching (Promise.all)
+     * - State management
+     */
+
+    // --- State Storage ---
+    const AppState = {
+      currentQuery: '',
+      activeController: null,
+      debounceTimer: null,
+      cachedRepos: [],
+      currentSort: 'stars',
+      status: 'IDLE' // IDLE | LOADING | SUCCESS | EMPTY | ERROR
+    };
+
+    // --- DOM Elements ---
+    const searchForm = document.getElementById('searchForm');
+    const usernameInput = document.getElementById('usernameInput');
+    const clearInputBtn = document.getElementById('clearInputBtn');
+    const searchBtn = document.getElementById('searchBtn');
+    const cancelReqBtn = document.getElementById('cancelReqBtn');
+    const debounceProgressBar = document.getElementById('debounceProgress');
+    const retryBtn = document.getElementById('retryBtn');
+    const repoSortSelect = document.getElementById('repoSortSelect');
+
+    // Telemetry Elements
+    const metricStatus = document.getElementById('metricStatus');
+    const metricHttp = document.getElementById('metricHttp');
+    const metricLatency = document.getElementById('metricLatency');
+    const metricAbort = document.getElementById('metricAbort');
+    const metricController = document.getElementById('metricController');
+
+    // State Containers
+    const stateIdle = document.getElementById('stateIdle');
+    const stateLoading = document.getElementById('stateLoading');
+    const stateSuccess = document.getElementById('stateSuccess');
+    const stateEmpty = document.getElementById('stateEmpty');
+    const stateError = document.getElementById('stateError');
+
+    // Profile & Repo Elements
+    const userAvatar = document.getElementById('userAvatar');
+    const userName = document.getElementById('userName');
+    const userLoginLink = document.getElementById('userLoginLink');
+    const userGithubBtn = document.getElementById('userGithubBtn');
+    const userBio = document.getElementById('userBio');
+    const userLocation = document.getElementById('userLocation');
+    const userCompany = document.getElementById('userCompany');
+    const userBlog = document.getElementById('userBlog');
+    const userJoined = document.getElementById('userJoined');
+    const statRepos = document.getElementById('statRepos');
+    const statFollowers = document.getElementById('statFollowers');
+    const statFollowing = document.getElementById('statFollowing');
+    const reposGrid = document.getElementById('reposGrid');
+    const repoCountBadge = document.getElementById('repoCountBadge');
+
+    // Error Elements
+    const errorTitle = document.getElementById('errorTitle');
+    const errorMessage = document.getElementById('errorMessage');
+    const errorIcon = document.getElementById('errorIcon');
+    const errorIconWrapper = document.getElementById('errorIconWrapper');
+
+    // Modal Elements
+    const theoryModal = document.getElementById('theoryModal');
+    const theoryModalBtn = document.getElementById('theoryModalBtn');
+    const closeTheoryBtn = document.getElementById('closeTheoryBtn');
+    const dismissTheoryBtn = document.getElementById('dismissTheoryBtn');
+
+    // --- State Switching Machine ---
+    function setUIState(newState) {
+      AppState.status = newState;
+
+      // Hide all states
+      stateIdle.classList.add('hidden');
+      stateLoading.classList.add('hidden');
+      stateSuccess.classList.add('hidden');
+      stateEmpty.classList.add('hidden');
+      stateError.classList.add('hidden');
+
+      // Update diagnostic badge
+      metricStatus.className = 'inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border';
+      
+      switch (newState) {
+        case 'IDLE':
+          stateIdle.classList.remove('hidden');
+          metricStatus.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5"></span>IDLE';
+          metricStatus.classList.add('bg-slate-800', 'text-slate-300', 'border-slate-700');
+          cancelReqBtn.disabled = true;
+          break;
+
+        case 'LOADING':
+          stateLoading.classList.remove('hidden');
+          metricStatus.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping mr-1.5"></span>FETCHING';
+          metricStatus.classList.add('bg-cyan-950', 'text-cyan-300', 'border-cyan-800');
+          cancelReqBtn.disabled = false;
+          break;
+
+        case 'SUCCESS':
+          stateSuccess.classList.remove('hidden');
+          metricStatus.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5"></span>RESOLVED';
+          metricStatus.classList.add('bg-emerald-950', 'text-emerald-300', 'border-emerald-800');
+          cancelReqBtn.disabled = true;
+          break;
+
+        case 'EMPTY':
+          stateEmpty.classList.remove('hidden');
+          metricStatus.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 mr-1.5"></span>EMPTY';
+          metricStatus.classList.add('bg-amber-950', 'text-amber-300', 'border-amber-800');
+          cancelReqBtn.disabled = true;
+          break;
+
+        case 'ERROR':
+          stateError.classList.remove('hidden');
+          metricStatus.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-rose-400 mr-1.5"></span>REJECTED';
+          metricStatus.classList.add('bg-rose-950', 'text-rose-300', 'border-rose-800');
+          cancelReqBtn.disabled = true;
+          break;
+      }
+    }
+
+    // --- Core Asynchronous Data Fetching Engine ---
+    async function executeFetch(username) {
+      const sanitizedUser = username.trim();
+      if (!sanitizedUser) {
+        setUIState('IDLE');
+        return;
+      }
+
+      // Step 1: Cancel any existing in-flight request via AbortController
+      if (AppState.activeController) {
+        AppState.activeController.abort();
+        metricAbort.textContent = 'Aborted Previous';
+        metricAbort.className = 'text-rose-400 font-semibold';
+      }
+
+      // Step 2: Create a new AbortController instance for this request
+      AppState.activeController = new AbortController();
+      const { signal } = AppState.activeController;
+      const controllerId = Math.random().toString(36).substring(2, 7);
+
+      metricController.textContent = `#${controllerId}`;
+      metricAbort.textContent = 'Active (Listening)';
+      metricAbort.className = 'text-emerald-400 font-semibold';
+      metricHttp.textContent = 'Pending...';
+      metricLatency.textContent = '...';
+
+      setUIState('LOADING');
+      AppState.currentQuery = sanitizedUser;
+
+      const startTime = performance.now();
+
+      try {
+        // Step 3: Run concurrent asynchronous calls with Promise.all
+        // Profiles & Repos are fetched in parallel
+        const userUrl = `https://api.github.com/users/${encodeURIComponent(sanitizedUser)}`;
+        const reposUrl = `https://api.github.com/users/${encodeURIComponent(sanitizedUser)}/repos?per_page=100&sort=updated`;
+
+        const [userResponse, reposResponse] = await Promise.all([
+          fetch(userUrl, { signal }),
+          fetch(reposUrl, { signal })
+        ]);
+
+        const endTime = performance.now();
+        const latencyMs = Math.round(endTime - startTime);
+        metricLatency.textContent = `${latencyMs}ms`;
+        metricHttp.textContent = `${userResponse.status} ${userResponse.statusText || 'OK'}`;
+
+        // Check for HTTP errors
+        if (!userResponse.ok) {
+          if (userResponse.status === 404) {
+            throw new Error(`User "${sanitizedUser}" does not exist on GitHub.`);
+          } else if (userResponse.status === 403) {
+            throw new Error('GitHub API rate limit exceeded. Please wait a minute or connect later.');
+          } else {
+            throw new Error(`GitHub returned an error: ${userResponse.status} ${userResponse.statusText}`);
+          }
+        }
+
+        // Parse JSON streams
+        const userData = await userResponse.json();
+        const reposData = await reposResponse.json();
+
+        // Render profile and repos
+        renderProfile(userData);
+        AppState.cachedRepos = Array.isArray(reposData) ? reposData : [];
+
+        if (AppState.cachedRepos.length === 0) {
+          setUIState('EMPTY');
+        } else {
+          sortAndRenderRepos();
+          setUIState('SUCCESS');
+        }
+
+      } catch (err) {
+        const endTime = performance.now();
+        metricLatency.textContent = `${Math.round(endTime - startTime)}ms`;
+
+        // Handle request aborts vs actual failures
+        if (err.name === 'AbortError') {
+          metricHttp.textContent = 'Canceled';
+          metricAbort.textContent = 'Signal Aborted';
+          metricAbort.className = 'text-rose-400 font-semibold';
+          showToast('Previous request was canceled by AbortController', 'info');
+          // If canceled, do not overwrite the UI with an error state
+          return;
+        }
+
+        // Network or API Error handling
+        metricHttp.textContent = 'Failed';
+        metricAbort.textContent = 'Error';
+        metricAbort.className = 'text-rose-400 font-semibold';
+
+        errorTitle.textContent = err.message.includes('404') || err.message.includes('does not exist')
+          ? 'User Not Found' 
+          : 'Network or API Issue';
+        errorMessage.textContent = err.message || 'Something went wrong while contacting GitHub API.';
+
+        setUIState('ERROR');
+      } finally {
+        AppState.activeController = null;
+      }
+    }
+
+    // --- Render Profile Data ---
+    function renderProfile(user) {
+      userAvatar.src = user.avatar_url;
+      userName.textContent = user.name || user.login;
+      userLoginLink.textContent = `@${user.login}`;
+      userLoginLink.href = user.html_url;
+      userGithubBtn.href = user.html_url;
+      userBio.textContent = user.bio || 'This user has not set a public bio yet.';
+      
+      // Location
+      if (user.location) {
+        userLocation.textContent = user.location;
+        document.getElementById('userLocationSpan').classList.remove('hidden');
+      } else {
+        document.getElementById('userLocationSpan').classList.add('hidden');
+      }
+
+      // Company
+      if (user.company) {
+        userCompany.textContent = user.company;
+        document.getElementById('userCompanySpan').classList.remove('hidden');
+      } else {
+        document.getElementById('userCompanySpan').classList.add('hidden');
+      }
+
+      // Blog / Website
+      if (user.blog) {
+        let blogUrl = user.blog.startsWith('http') ? user.blog : `https://${user.blog}`;
+        userBlog.textContent = user.blog.replace(/^https?:\/\//, '');
+        userBlog.href = blogUrl;
+        document.getElementById('userBlogSpan').classList.remove('hidden');
+      } else {
+        document.getElementById('userBlogSpan').classList.add('hidden');
+      }
+
+      // Joined Date
+      if (user.created_at) {
+        const d = new Date(user.created_at);
+        userJoined.textContent = `Joined ${d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}`;
+      }
+
+      // Statistics
+      statRepos.textContent = (user.public_repos || 0).toLocaleString();
+      statFollowers.textContent = (user.followers || 0).toLocaleString();
+      statFollowing.textContent = (user.following || 0).toLocaleString();
+    }
+
+    // --- Render & Sort Repositories ---
+    function sortAndRenderRepos() {
+      if (!AppState.cachedRepos || AppState.cachedRepos.length === 0) return;
+
+      const repos = [...AppState.cachedRepos];
+      const sortType = repoSortSelect.value;
+
+      if (sortType === 'stars') {
+        repos.sort((a, b) => b.stargazers_count - a.stargazers_count);
+      } else if (sortType === 'updated') {
+        repos.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+      } else if (sortType === 'forks') {
+        repos.sort((a, b) => b.forks_count - a.forks_count);
+      }
+
+      // Display up to 20 top repositories
+      const displayedRepos = repos.slice(0, 20);
+      repoCountBadge.textContent = `${displayedRepos.length} of ${repos.length}`;
+
+      reposGrid.innerHTML = '';
+      displayedRepos.forEach(repo => {
+        const repoCard = document.createElement('div');
+        repoCard.className = 'glass-card rounded-xl p-5 border border-slate-800/90 hover:border-slate-700 hover:bg-space-850/80 transition flex flex-col justify-between group';
+
+        const updatedDate = new Date(repo.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        const languageColor = getLanguageColor(repo.language);
+
+        repoCard.innerHTML = `
+          <div>
+            <div class="flex items-start justify-between gap-2 mb-2">
+              <a href="${repo.html_url}" target="_blank" rel="noopener noreferrer" class="text-sm font-bold text-white group-hover:text-cyan-400 transition truncate max-w-[260px] flex items-center space-x-1.5">
+                <i class="fa-solid fa-code-fork text-xs text-slate-500"></i>
+                <span class="truncate">${escapeHtml(repo.name)}</span>
+              </a>
+              <span class="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-space-800 border border-slate-700/60 text-slate-400 flex-shrink-0">
+                ${repo.visibility || (repo.private ? 'Private' : 'Public')}
+              </span>
+            </div>
+
+            <p class="text-xs text-slate-400 line-clamp-2 min-h-[32px] mb-4">
+              ${repo.description ? escapeHtml(repo.description) : 'No description provided for this repository.'}
+            </p>
+          </div>
+
+          <div class="pt-3 border-t border-slate-800/70 flex items-center justify-between text-xs text-slate-400">
+            <div class="flex items-center space-x-3">
+              ${repo.language ? `
+                <span class="flex items-center space-x-1.5">
+                  <span class="w-2.5 h-2.5 rounded-full" style="background-color: ${languageColor}"></span>
+                  <span class="text-[11px] font-mono text-slate-300">${repo.language}</span>
+                </span>
+              ` : ''}
+
+              <span class="flex items-center space-x-1" title="Stars">
+                <i class="fa-regular fa-star text-amber-400"></i>
+                <span class="font-mono">${repo.stargazers_count}</span>
+              </span>
+
+              <span class="flex items-center space-x-1" title="Forks">
+                <i class="fa-solid fa-code-branch text-slate-400"></i>
+                <span class="font-mono">${repo.forks_count}</span>
+              </span>
+            </div>
+
+            <button 
+              onclick="copyCloneUrl('${repo.clone_url}', this)" 
+              class="p-1.5 rounded-lg bg-space-800 hover:bg-space-700 text-slate-400 hover:text-white transition"
+              title="Copy Git Clone URL"
+            >
+              <i class="fa-regular fa-copy"></i>
+            </button>
+          </div>
+        `;
+        reposGrid.appendChild(repoCard);
+      });
+    }
+
+    // --- Input Debouncing Implementation ---
+    function triggerDebouncedFetch() {
+      const query = usernameInput.value.trim();
+
+      // Reset animation on visual debounce countdown bar
+      debounceProgressBar.classList.remove('animate-debounce-bar');
+      void debounceProgressBar.offsetWidth; // Force CSS reflow
+      debounceProgressBar.classList.add('animate-debounce-bar');
+
+      // Clear existing debounce timer
+      if (AppState.debounceTimer) {
+        clearTimeout(AppState.debounceTimer);
+      }
+
+      if (!query) {
+        debounceProgressBar.classList.remove('animate-debounce-bar');
+        debounceProgressBar.style.width = '0%';
+        setUIState('IDLE');
+        return;
+      }
+
+      // Establish new debounce interval (600ms)
+      AppState.debounceTimer = setTimeout(() => {
+        debounceProgressBar.classList.remove('animate-debounce-bar');
+        debounceProgressBar.style.width = '0%';
+        executeFetch(query);
+      }, 600);
+    }
+
+    // --- Clipboard Utility ---
+    window.copyCloneUrl = function(url, btnElement) {
+      // Fallback-compatible copy mechanism for iframe sandboxes
+      const tempInput = document.createElement('input');
+      tempInput.value = url;
+      document.body.appendChild(tempInput);
+      tempInput.select();
+      try {
+        document.execCommand('copy');
+        showToast('Clone URL copied to clipboard!', 'success');
+        if (btnElement) {
+          btnElement.innerHTML = '<i class="fa-solid fa-check text-emerald-400"></i>';
+          setTimeout(() => {
+            btnElement.innerHTML = '<i class="fa-regular fa-copy"></i>';
+          }, 1500);
+        }
+      } catch (e) {
+        showToast('Failed to copy text', 'error');
+      }
+      document.body.removeChild(tempInput);
+    };
+
+    // --- Toast Notifications ---
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = 'pointer-events-auto flex items-center space-x-2 px-4 py-2.5 rounded-xl shadow-lg border text-xs font-medium transform transition-all duration-300 translate-y-3 opacity-0';
+      
+      if (type === 'success') {
+        toast.classList.add('bg-emerald-950', 'text-emerald-200', 'border-emerald-800');
+        toast.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400"></i><span>${message}</span>`;
+      } else if (type === 'error') {
+        toast.classList.add('bg-rose-950', 'text-rose-200', 'border-rose-800');
+        toast.innerHTML = `<i class="fa-solid fa-circle-xmark text-rose-400"></i><span>${message}</span>`;
+      } else {
+        toast.classList.add('bg-space-800', 'text-slate-200', 'border-slate-700');
+        toast.innerHTML = `<i class="fa-solid fa-circle-info text-cyan-400"></i><span>${message}</span>`;
+      }
+
+      container.appendChild(toast);
+      
+      // Animate in
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-3', 'opacity-0');
+      });
+
+      // Animate out after 2.6s
+      setTimeout(() => {
+        toast.classList.add('translate-y-3', 'opacity-0');
+        setTimeout(() => toast.remove(), 350);
+      }, 2600);
+    }
+
+    // --- Helper Functions ---
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+    }
+
+    function getLanguageColor(lang) {
+      const colors = {
+        JavaScript: '#f1e05a',
+        TypeScript: '#3178c6',
+        HTML: '#e34c26',
+        CSS: '#563d7c',
+        Python: '#3572a5',
+        Rust: '#dea584',
+        Go: '#00add8',
+        Java: '#b07219',
+        'C++': '#f34b7d',
+        Ruby: '#701516',
+        PHP: '#4f5d95',
+        Shell: '#89e051',
+        Swift: '#ffac45'
+      };
+      return colors[lang] || '#94a3b8';
+    }
+
+    // --- Event Listeners Initialization ---
+    function initializeEvents() {
+      // Input typing with debounce
+      usernameInput.addEventListener('input', () => {
+        if (usernameInput.value.trim().length > 0) {
+          clearInputBtn.classList.remove('hidden');
+        } else {
+          clearInputBtn.classList.add('hidden');
+        }
+        triggerDebouncedFetch();
+      });
+
+      // Clear input button
+      clearInputBtn.addEventListener('click', () => {
+        usernameInput.value = '';
+        clearInputBtn.classList.add('hidden');
+        debounceProgressBar.classList.remove('animate-debounce-bar');
+        debounceProgressBar.style.width = '0%';
+        if (AppState.debounceTimer) clearTimeout(AppState.debounceTimer);
+        setUIState('IDLE');
+        usernameInput.focus();
+      });
+
+      // Form Manual Submit (Instant fetch bypassing debounce timeout)
+      searchForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (AppState.debounceTimer) clearTimeout(AppState.debounceTimer);
+        debounceProgressBar.classList.remove('animate-debounce-bar');
+        debounceProgressBar.style.width = '0%';
+        executeFetch(usernameInput.value);
+      });
+
+      // Abort Request Manual Trigger
+      cancelReqBtn.addEventListener('click', () => {
+        if (AppState.activeController) {
+          AppState.activeController.abort();
+          metricAbort.textContent = 'User Aborted';
+          metricAbort.className = 'text-rose-400 font-semibold';
+          showToast('Active network request aborted.', 'info');
+          setUIState('IDLE');
+        }
+      });
+
+      // Quick preset buttons
+      document.querySelectorAll('.quick-preset').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const user = btn.getAttribute('data-username');
+          usernameInput.value = user;
+          clearInputBtn.classList.remove('hidden');
+          if (AppState.debounceTimer) clearTimeout(AppState.debounceTimer);
+          debounceProgressBar.classList.remove('animate-debounce-bar');
+          debounceProgressBar.style.width = '0%';
+          executeFetch(user);
+        });
+      });
+
+      // Retry Button on error
+      retryBtn.addEventListener('click', () => {
+        if (AppState.currentQuery) {
+          executeFetch(AppState.currentQuery);
+        }
+      });
+
+      // Repo Sorting Select
+      repoSortSelect.addEventListener('change', () => {
+        sortAndRenderRepos();
+      });
+
+      // Modal Controls
+      theoryModalBtn.addEventListener('click', () => {
+        theoryModal.classList.remove('hidden');
+        theoryModal.classList.add('flex');
+      });
+
+      const closeModal = () => {
+        theoryModal.classList.add('hidden');
+        theoryModal.classList.remove('flex');
+      };
+
+      closeTheoryBtn.addEventListener('click', closeModal);
+      dismissTheoryBtn.addEventListener('click', closeModal);
+      theoryModal.addEventListener('click', (e) => {
+        if (e.target === theoryModal) closeModal();
+      });
+
+      // Escape key to close modal
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !theoryModal.classList.contains('hidden')) {
+          closeModal();
+        }
+      });
+    }
+
+    // Initialize application when DOM is ready
+    window.addEventListener('DOMContentLoaded', () => {
+      initializeEvents();
+      setUIState('IDLE');
+    });
+  </script>
+</body>
+</html>
